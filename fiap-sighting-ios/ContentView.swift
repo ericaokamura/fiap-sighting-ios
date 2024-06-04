@@ -154,4 +154,5 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
 #Preview {
     ContentView()
+        .environmentObject(LocationManager())
 }
