@@ -51,9 +51,9 @@ struct ContentView: View {
 
                 if self.isShowingForm {
                     Button(action: {
-                        guard let location = self.locationManager.location else {
-                            self.alertMessage = "Localização não disponível"
+                        guard let location = self.locationManager.lastKnownLocation else {
                             self.showingAlert = true
+                            self.alertMessage = "Não foi possível obter a localização atual"
                             return
                         }
                         let sighting = Sighting(
@@ -134,21 +134,79 @@ struct Sighting: Codable, Identifiable {
     var longitude: Double
 }
 
-class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let locationManager = CLLocationManager()
-
-    @Published var location: CLLocationCoordinate2D?
+final class LocationManager: NSObject, ObservableObject {
+    @Published var lastKnownLocation: CLLocationCoordinate2D?
+    var manager = CLLocationManager()
 
     override init() {
         super.init()
-        self.locationManager.delegate = self
-        self.locationManager.requestWhenInUseAuthorization()
-        self.locationManager.startUpdatingLocation()
+        checkLocationAuthorization()
+        manager.delegate = self
+    }
+
+    func checkLocationAuthorization() {
+        manager.startUpdatingLocation()
+
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+
+        case .restricted:
+            print("Location restricted")
+
+        case .denied:
+            print("Location denied")
+
+        case .authorizedAlways:
+            print("Location authorizedAlways")
+
+        case .authorizedWhenInUse:
+            print("Location authorized when in use")
+            if let location = manager.location {
+                lastKnownLocation = location.coordinate
+            } else {
+                print("Unable to get current location")
+            }
+
+        @unknown default:
+            print("Location service disabled")
+        }
+    }
+}
+
+extension LocationManager: CLLocationManagerDelegate {
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        checkLocationAuthorization()
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        self.location = location.coordinate
+        if let location = locations.first {
+            lastKnownLocation = location.coordinate
+        }
+    }
+}
+
+class LocationModel: NSObject, ObservableObject {
+    private let locationManager = CLLocationManager()
+    @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
+
+    override init() {
+        super.init()
+        locationManager.delegate = self
+    }
+
+    public func requestAuthorization(always: Bool = false) {
+        if always {
+            locationManager.requestAlwaysAuthorization()
+        } else {
+            locationManager.requestWhenInUseAuthorization()
+        }
+    }
+}
+
+extension LocationModel: CLLocationManagerDelegate {
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        authorizationStatus = status
     }
 }
 
